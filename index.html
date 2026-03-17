@@ -179,7 +179,17 @@
     document.getElementById("kategori-secici").onchange = rotayiGuncelle;
     veriIndir();
 
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+    // Service Worker Kaydı - GitHub Pages Uyumlu
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        // Mevcut URL'den klasör yolunu çekiyoruz
+        const scope = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+        
+        navigator.serviceWorker.register('sw.js', { scope: scope })
+            .then(reg => console.log('PWA Başarılı!'))
+            .catch(err => console.log('PWA Hatası (Normaldir):', err));
+    });
+}
 </script>
 </body>
 </html>
