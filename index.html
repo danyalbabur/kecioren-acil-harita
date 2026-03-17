@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Ankara Acil Durum Haritası</title>
+    <title>Ankara - Kırıkkale Acil Harita</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -18,7 +18,6 @@
         body { padding: 0; margin: 0; background: #1a1a1a; }
         html, body, #map { height: 100%; width: 100vw; }
         
-        /* Dark Mode Filtresi */
         .leaflet-layer, .leaflet-control-zoom-in, .leaflet-control-zoom-out, .leaflet-control-attribution {
             filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
@@ -35,12 +34,15 @@
             width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px;
             border: none; font-size: 16px; font-weight: bold; background-color: #333; color: white;
         }
-        #en-yakin-mesafe { margin: 0 0 12px 0; font-size: 15px; font-weight: bold; color: #ff5252; }
-        #yol-tarifi-btn {
-            background-color: #007aff; color: white; border: none; padding: 12px 20px;
-            font-size: 16px; font-weight: bold; border-radius: 8px; width: 100%; cursor: pointer;
-            display: none;
+        #en-yakin-mesafe { margin: 0 0 12px 0; font-size: 14px; font-weight: bold; color: #ff5252; }
+        
+        .buton-grubu { display: flex; gap: 10px; }
+        #yol-tarifi-btn, #yenile-btn {
+            flex: 1; padding: 12px; font-size: 14px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer;
         }
+        #yol-tarifi-btn { background-color: #007aff; color: white; display: none; }
+        #yenile-btn { background-color: #444; color: white; }
+
         .popup-yol-btn {
             background-color: #28a745; color: white; border: none; padding: 8px 15px;
             border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 8px; width: 100%;
@@ -53,66 +55,74 @@
 
 <div id="bilgi-paneli">
     <select id="kategori-secici">
-        <option value="toplanma">🟢 En Yakın Toplanma Alanı (AFAD)</option>
-        <option value="eczane">💊 En Yakın Eczane (Ankara Genel)</option>
-        <option value="hastane">🏥 En Yakın Hastane (Ankara Genel)</option>
+        <option value="toplanma">🟢 En Yakın Toplanma Alanı</option>
+        <option value="eczane">💊 En Yakın Eczane (Ankara+K.Kale)</option>
+        <option value="hastane">🏥 En Yakın Hastane (Ankara+K.Kale)</option>
     </select>
-    <p id="en-yakin-mesafe">Ankara Verileri Yükleniyor... 🛰️</p>
-    <button id="yol-tarifi-btn">Yol Tarifi Al</button>
+    <p id="en-yakin-mesafe">Veriler yükleniyor (Bölge Geniş)... ⏳</p>
+    <div class="buton-grubu">
+        <button id="yenile-btn" onclick="location.reload()">Yenile</button>
+        <button id="yol-tarifi-btn">Yol Tarifi</button>
+    </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 
 <script>
-    // 1. Harita Kurulumu (Ankara Merkez)
-    var map = L.map('map').setView([39.9208, 32.8541], 12);
+    // Ankara ve Kırıkkale'nin tam ortasına odaklanıyoruz
+    var map = L.map('map').setView([39.92, 33.10], 10);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-    var markers = L.markerClusterGroup(); // Kümeleme grubu oluştur
+    var markers = L.markerClusterGroup();
     var veriSeti = [];
     var anlikLat = 0, anlikLon = 0;
     var aktifRotaCizgisi = null, kullaniciMarkeri = null;
 
-    // 2. Statik AFAD Verileri (Örnek - Ankara Genel)
+    // Statik Veriler (Ankara + Kırıkkale Örnekleri)
     var toplanmaAlanlari = [
         { isim: "Anıtkabir Yanı T.A.", tur: "toplanma", lat: 39.9250, lon: 32.8370 },
-        { isim: "Kuğulu Park T.A.", tur: "toplanma", lat: 39.9020, lon: 32.8590 },
-        { isim: "Gençlik Parkı T.A.", tur: "toplanma", lat: 39.9380, lon: 32.8530 },
-        { isim: "Milli Kütüphane Önü T.A.", tur: "toplanma", lat: 39.9165, lon: 32.8335 },
-        { isim: "Kelebek Su Parkı T.A.", tur: "toplanma", lat: 39.9900, lon: 32.7500 }, // Etimesgut civarı
-        { isim: "Mamak Şafaktepe Parkı T.A.", tur: "toplanma", lat: 39.9280, lon: 32.9000 }
+        { isim: "Kırıkkale Büyük Şehir Parkı T.A.", tur: "toplanma", lat: 39.8415, lon: 33.5145 },
+        { isim: "Kırıkkale Cumhuriyet Meydanı", tur: "toplanma", lat: 39.8395, lon: 33.5085 },
+        { isim: "Gölbaşı Sahil Parkı T.A.", tur: "toplanma", lat: 39.7890, lon: 32.8120 }
     ];
     veriSeti.push(...toplanmaAlanlari);
 
-    // 3. Ankara Genel Canlı Veri Çekme (Overpass API)
     async function veriIndir() {
+        // MEGA BBOX: Ankara Batı'dan Kırıkkale Doğu'ya
         var overpassSorgusu = `
-            [out:json][timeout:30];
+            [out:json][timeout:90];
             (
-              node["amenity"="pharmacy"](39.70,32.50,40.15,33.65);
-              node["amenity"="hospital"](39.70,32.50,40.15,33.65);
+              node["amenity"="pharmacy"](39.70,32.50,40.15,33.70);
+              node["amenity"="hospital"](39.70,32.50,40.15,33.70);
             );
             out body;`;
         
         try {
-            var response = await fetch("https://lz4.overpass-api.de/api/interpreter", {
+            // Daha stabil olan ana sunucuyu deniyoruz
+            var response = await fetch("https://overpass-api.de/api/interpreter", {
                 method: "POST",
                 body: "data=" + encodeURIComponent(overpassSorgusu)
             });
+            
+            if (!response.ok) throw new Error("Sunucu meşgul, lütfen yenileyin.");
+            
             var data = await response.json();
+            if (data.elements.length === 0) throw new Error("Bu bölgede veri bulunamadı.");
 
             data.elements.forEach(el => {
-                if(el.lat && el.lon) {
-                    var tur = el.tags.amenity === "hospital" ? "hastane" : "eczane";
-                    veriSeti.push({ isim: el.tags.name || (tur.toUpperCase()), tur: tur, lat: el.lat, lon: el.lon });
-                }
+                var tur = el.tags.amenity === "hospital" ? "hastane" : "eczane";
+                veriSeti.push({ isim: el.tags.name || tur.toUpperCase(), tur: tur, lat: el.lat, lon: el.lon });
             });
 
             haritayaBas();
-            document.getElementById("en-yakin-mesafe").innerHTML = "Ankara Verileri Hazır! Konum aranıyor... 📍";
+            document.getElementById("en-yakin-mesafe").innerHTML = veriSeti.length + " nokta yüklendi. Konum aranıyor... 🛰️";
             canliTakip();
-        } catch (e) { document.getElementById("en-yakin-mesafe").innerHTML = "Hata: Veri çekilemedi."; }
+
+        } catch (e) {
+            document.getElementById("en-yakin-mesafe").innerHTML = "Hata: " + e.message;
+            console.error(e);
+        }
     }
 
     function haritayaBas() {
@@ -122,7 +132,7 @@
             var ikon = L.divIcon({ className: 'ozel-ikon', html: emoji, iconSize: [30,30], iconAnchor: [15,15] });
             var m = L.marker([v.lat, v.lon], { icon: ikon }).bindPopup(`
                 <div style="text-align:center;"><b>${v.isim}</b><br>
-                <button class="popup-yol-btn" onclick="yolAc(${v.lat}, ${v.lon})">📍 Git</button></div>
+                <button class="popup-yol-btn" onclick="yolAc(${v.lat}, ${v.lon})">📍 Yol Tarifi</button></div>
             `);
             markers.addLayer(m);
         });
@@ -135,12 +145,6 @@
         window.open(url, '_blank');
     };
 
-    function mesafeOlcu(lat1, lon1, lat2, lon2) {
-        var R = 6371000; var rad = Math.PI / 180;
-        var a = Math.sin((lat2-lat1)*rad/2)**2 + Math.cos(lat1*rad)*Math.cos(lat2*rad)*Math.sin((lon2-lon1)*rad/2)**2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    }
-
     function rotayiGuncelle() {
         if(anlikLat === 0) return;
         var secilen = document.getElementById("kategori-secici").value;
@@ -148,16 +152,16 @@
 
         veriSeti.forEach(v => {
             if(v.tur === secilen) {
-                var d = mesafeOlcu(anlikLat, anlikLon, v.lat, v.lon);
+                var R = 6371000; var rad = Math.PI / 180;
+                var d = R * 2 * Math.atan2(Math.sqrt(Math.sin((v.lat-anlikLat)*rad/2)**2 + Math.cos(anlikLat*rad)*Math.cos(v.lat*rad)*Math.sin((v.lon-anlikLon)*rad/2)**2), Math.sqrt(1-(Math.sin((v.lat-anlikLat)*rad/2)**2 + Math.cos(anlikLat*rad)*Math.cos(v.lat*rad)*Math.sin((v.lon-anlikLon)*rad/2)**2)));
                 if(d < enYakin.d) enYakin = { d: d, n: v.isim, la: v.lat, lo: v.lon };
             }
         });
 
         if(enYakin.la !== 0) {
-            document.getElementById("en-yakin-mesafe").innerHTML = `Hedef: ${enYakin.n}<br>📏 Mesafe: ${Math.round(enYakin.d)} metre`;
+            document.getElementById("en-yakin-mesafe").innerHTML = `En Yakın: ${enYakin.n}<br>📏 Mesafe: ${Math.round(enYakin.d)}m`;
             document.getElementById("yol-tarifi-btn").style.display = "block";
             document.getElementById("yol-tarifi-btn").onclick = () => yolAc(enYakin.la, enYakin.lo);
-            
             if(aktifRotaCizgisi) map.removeLayer(aktifRotaCizgisi);
             aktifRotaCizgisi = L.polyline([[anlikLat, anlikLon], [enYakin.la, enYakin.lo]], {color: '#ff5252', weight: 4, dashArray: '10, 10'}).addTo(map);
         }
@@ -166,30 +170,37 @@
     function canliTakip() {
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
-                anlikLat = pos.coords.latitude; anlikLon = pos.coords.longitude;
+                anlikLat = pos.coords.latitude; 
+                anlikLon = pos.coords.longitude;
+
                 if(!kullaniciMarkeri) {
-                    kullaniciMarkeri = L.marker([anlikLat, anlikLon], {icon: L.divIcon({className:'ozel-ikon', html:'🔵', iconSize:[30,30]})}).addTo(map);
-                    map.flyTo([anlikLat, anlikLon], 14);
-                } else { kullaniciMarkeri.setLatLng([anlikLat, anlikLon]); }
+                    // Kullanıcıyı ilk kez bulduğunda burası çalışır
+                    kullaniciMarkeri = L.marker([anlikLat, anlikLon], {
+                        icon: L.divIcon({className:'ozel-ikon', html:'🔵', iconSize:[30,30]})
+                    }).addTo(map);
+
+                    // SİHİRLİ DOKUNUŞ: Konum bulunur bulunmaz kamerayı senin üzerine uçurur
+                    map.flyTo([anlikLat, anlikLon], 15, {
+                        animate: true,
+                        duration: 1.5 // 1.5 saniyede süzülerek senin üzerine gelir
+                    });
+                } else { 
+                    // Yürümeye devam ettikçe sadece mavi noktanın yeri değişir, kamera seni darlamaz
+                    kullaniciMarkeri.setLatLng([anlikLat, anlikLon]); 
+                }
                 rotayiGuncelle();
-            }, null, { enableHighAccuracy: true });
+            }, function(error) {
+                console.log("Konum izni bekleniyor...");
+            }, { enableHighAccuracy: true });
         }
     }
 
     document.getElementById("kategori-secici").onchange = rotayiGuncelle;
     veriIndir();
 
-    // Service Worker Kaydı - GitHub Pages Uyumlu
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        // Mevcut URL'den klasör yolunu çekiyoruz
-        const scope = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
-        
-        navigator.serviceWorker.register('sw.js', { scope: scope })
-            .then(reg => console.log('PWA Başarılı!'))
-            .catch(err => console.log('PWA Hatası (Normaldir):', err));
-    });
-}
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js', { scope: './' });
+    }
 </script>
 </body>
 </html>
