@@ -65,8 +65,7 @@
     var veriSeti = [];
     var anlikLat = 0, anlikLon = 0;
     var aktifRotaCizgisi = null, kullaniciMarkeri = null;
-
-    // Statik Veriler (Yedek Plan)
+    
     veriSeti.push(
         { isim: "Anıtkabir Yanı T.A.", tur: "toplanma", lat: 39.9250, lon: 32.8370 },
         { isim: "Keçiören Belediye T.A.", tur: "toplanma", lat: 39.9780, lon: 32.8630 },
@@ -81,10 +80,8 @@
             `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=walking`;
         window.open(url, '_blank');
     };
-
-    // AKILLI VERİ ÇEKME FONKSİYONU (Retry Mekanizmalı)
+    
     async function veriIndir(denemeSayisi = 0) {
-        // Sunucu listesi (Biri patlarsa diğerini deneyecek)
         const sunucular = [
             "https://overpass-api.de/api/interpreter",
             "https://lz4.overpass-api.de/api/interpreter",
