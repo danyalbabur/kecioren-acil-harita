@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Ankara - Kırıkkale Acil Harita</title>
+    <title>Ankara - Kırıkkale Akıllı Afet Portalı</title>
     
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,32 +17,43 @@
     <style>
         body { padding: 0; margin: 0; background: #1a1a1a; overflow: hidden; }
         html, body, #map { height: 100%; width: 100vw; }
+        
+
         .leaflet-layer { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
         .ozel-ikon { font-size: 24px; text-align: center; line-height: 24px; }
+
+        #konum-btn {
+            position: absolute; top: 20px; right: 20px; z-index: 1000;
+            background: white; border: none; width: 50px; height: 50px;
+            border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            cursor: pointer; font-size: 24px; display: flex; align-items: center; justify-content: center;
+        }
+
         #bilgi-paneli {
-            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; background: rgba(25, 25, 25, 0.95); padding: 15px;
-            border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            font-family: sans-serif; text-align: center; width: 85%; max-width: 400px; color: white;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: rgba(20, 20, 20, 0.95); padding: 18px;
+            border-radius: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+            font-family: -apple-system, sans-serif; text-align: center; width: 85%; max-width: 420px; color: white;
         }
         #kategori-secici {
-            width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px;
-            border: none; font-size: 16px; font-weight: bold; background-color: #333; color: white;
+            width: 100%; padding: 14px; margin-bottom: 12px; border-radius: 10px;
+            border: 1px solid #444; font-size: 16px; font-weight: bold; background-color: #2a2a2a; color: white;
         }
-        #en-yakin-mesafe { margin: 0 0 12px 0; font-size: 14px; font-weight: bold; color: #ff5252; }
+        #en-yakin-mesafe { margin: 0 0 15px 0; font-size: 15px; font-weight: bold; color: #ff5252; }
         #yol-tarifi-btn {
-            background-color: #007aff; color: white; border: none; padding: 12px 20px;
-            font-size: 16px; font-weight: bold; border-radius: 8px; width: 100%; cursor: pointer; display: none;
+            background-color: #007aff; color: white; border: none; padding: 14px 20px;
+            font-size: 16px; font-weight: bold; border-radius: 10px; width: 100%; cursor: pointer; display: none;
         }
         .popup-yol-btn {
-            background-color: #28a745; color: white; border: none; padding: 8px 15px;
-            border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 8px; width: 100%;
+            background-color: #28a745; color: white; border: none; padding: 10px;
+            border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; width: 100%;
         }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
+<button id="konum-btn" onclick="konumumaGit()" title="Konumuma Git">🎯</button>
 
 <div id="bilgi-paneli">
     <select id="kategori-secici">
@@ -50,7 +61,7 @@
         <option value="eczane">💊 En Yakın Eczane</option>
         <option value="hastane">🏥 En Yakın Hastane</option>
     </select>
-    <p id="en-yakin-mesafe">Veriler yükleniyor... 📡</p>
+    <p id="en-yakin-mesafe">Veriler taranıyor... 🛰️</p>
     <button id="yol-tarifi-btn">Yol Tarifi Al</button>
 </div>
 
@@ -58,14 +69,14 @@
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 
 <script>
-    var map = L.map('map').setView([39.92, 33.10], 10);
+    var map = L.map('map', { zoomControl: false }).setView([39.92, 33.10], 10);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
     var markers = L.markerClusterGroup();
     var veriSeti = [];
     var anlikLat = 0, anlikLon = 0;
     var aktifRotaCizgisi = null, kullaniciMarkeri = null;
-    
+
     veriSeti.push(
         { isim: "Anıtkabir Yanı T.A.", tur: "toplanma", lat: 39.9250, lon: 32.8370 },
         { isim: "Keçiören Belediye T.A.", tur: "toplanma", lat: 39.9780, lon: 32.8630 },
@@ -75,64 +86,48 @@
 
     window.yolAc = function(lat, lon) {
         var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        var url = isIOS ? 
-            `http://maps.apple.com/?daddr=${lat},${lon}&dirflg=w` : 
-            `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=walking`;
+        var url = isIOS ? `http://maps.apple.com/?daddr=${lat},${lon}&dirflg=w` : `https://www.google.com/maps/dir/?api=1...{lat},${lon}&travelmode=walking`;
         window.open(url, '_blank');
     };
-    
-    async function veriIndir(denemeSayisi = 0) {
-        const sunucular = [
-            "https://overpass-api.de/api/interpreter",
-            "https://lz4.overpass-api.de/api/interpreter",
-            "https://z.overpass-api.de/api/interpreter"
-        ];
-        
-        const overpassSorgusu = `[out:json][timeout:90];(node["amenity"~"pharmacy|hospital"](39.70,32.40,40.20,33.75););out body;`;
-        const currentServer = sunucular[denemeSayisi % sunucular.length];
 
+    window.konumumaGit = function() {
+        if(anlikLat !== 0) {
+            map.flyTo([anlikLat, anlikLon], 16, { animate: true, duration: 1.5 });
+        } else { alert("Konumunuz henüz tespit edilemedi."); }
+    };
+
+    async function veriIndir(deneme = 0) {
+        const url = ["https://overpass-api.de/api/interpreter", "https://lz4.overpass-api.de/api/interpreter"];
+        const sorgu = `[out:json][timeout:90];(node["amenity"~"pharmacy|hospital"](39.70,32.40,40.20,33.75););out body;`;
         try {
-            document.getElementById("en-yakin-mesafe").innerHTML = `Veri aranıyor (Deneme ${denemeSayisi + 1})...`;
-            
-            const response = await fetch(currentServer, {
-                method: "POST",
-                body: "data=" + encodeURIComponent(overpassSorgusu)
-            });
-
-            if (!response.ok) throw new Error("Sunucu meşgul");
-
+            const response = await fetch(url[deneme % 2], { method: "POST", body: "data=" + encodeURIComponent(sorgu) });
             const data = await response.json();
             data.elements.forEach(el => {
                 var tur = el.tags.amenity === "hospital" ? "hastane" : "eczane";
                 veriSeti.push({ isim: el.tags.name || tur.toUpperCase(), tur: tur, lat: el.lat, lon: el.lon });
             });
-
-            haritayaBas();
-            document.getElementById("en-yakin-mesafe").innerHTML = "Veriler Hazır! 🛰️";
+            haritayaBas("toplanma");
             canliTakip();
-
         } catch (e) {
-            console.error("Hata oluştu, tekrar deneniyor...", e);
-            if (denemeSayisi < 5) {
-                setTimeout(() => veriIndir(denemeSayisi + 1), 2000); // 2 saniye sonra tekrar dene
-            } else {
-                document.getElementById("en-yakin-mesafe").innerHTML = "Bağlantı zayıf, statik verilerle devam ediliyor.";
-                haritayaBas(); // En azından toplanma alanlarını göster
-                canliTakip();
-            }
+            if (deneme < 3) setTimeout(() => veriIndir(deneme + 1), 2000);
+            else { haritayaBas("toplanma"); canliTakip(); }
         }
     }
 
-    function haritayaBas() {
-        markers.clearLayers();
+    function haritayaBas(secilenTur) {
+        markers.clearLayers(); 
         veriSeti.forEach(v => {
-            var emoji = v.tur === "hastane" ? "🏥" : (v.tur === "eczane" ? "💊" : "🟢");
-            var m = L.marker([v.lat, v.lon], { 
-                icon: L.divIcon({ className: 'ozel-ikon', html: emoji, iconSize:[30,30] }) 
-            }).bindPopup(`<div style="color:#000"><b>${v.isim}</b><br><button class="popup-yol-btn" onclick="yolAc(${v.lat}, ${v.lon})">Yol Tarifi</button></div>`);
-            markers.addLayer(m);
+            if (v.tur === secilenTur) { 
+                var emoji = v.tur === "hastane" ? "🏥" : (v.tur === "eczane" ? "💊" : "🟢");
+                var m = L.marker([v.lat, v.lon], { 
+                    icon: L.divIcon({ className: 'ozel-ikon', html: emoji, iconSize:[30,30] }) 
+                }).bindPopup(`<div style="color:#000"><b>${v.isim}</b><br><button class="popup-yol-btn" onclick="yolAc(${v.lat}, ${v.lon})">Yol Tarifi</button></div>`);
+                markers.addLayer(m);
+            }
         });
         map.addLayer(markers);
+        document.getElementById("en-yakin-mesafe").innerHTML = "Filtrelendi: " + secilenTur.toUpperCase();
+        rotayiGuncelle(); 
     }
 
     function rotayiGuncelle() {
@@ -143,10 +138,7 @@
         veriSeti.forEach(v => {
             if(v.tur === secilen) {
                 var R = 6371000;
-                var dLat = (v.lat - anlikLat) * Math.PI / 180;
-                var dLon = (v.lon - anlikLon) * Math.PI / 180;
-                var a = Math.sin(dLat/2)**2 + Math.cos(anlikLat*Math.PI/180)*Math.cos(v.lat*Math.PI/180)*Math.sin(dLon/2)**2;
-                var d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                var d = R * 2 * Math.atan2(Math.sqrt(Math.sin((v.lat-anlikLat)*Math.PI/180/2)**2 + Math.cos(anlikLat*Math.PI/180)*Math.cos(v.lat*Math.PI/180)*Math.sin((v.lon-anlikLon)*Math.PI/180/2)**2), Math.sqrt(1-(Math.sin((v.lat-anlikLat)*Math.PI/180/2)**2 + Math.cos(anlikLat*Math.PI/180)*Math.cos(v.lat*Math.PI/180)*Math.sin((v.lon-anlikLon)*Math.PI/180/2)**2)));
                 if(d < enYakin.d) enYakin = { d: d, n: v.isim, la: v.lat, lo: v.lon };
             }
         });
@@ -173,7 +165,11 @@
         }
     }
 
-    document.getElementById("kategori-secici").onchange = rotayiGuncelle;
+
+    document.getElementById("kategori-secici").onchange = function(e) {
+        haritayaBas(e.target.value);
+    };
+
     veriIndir();
 </script>
 </body>
