@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ankara-acil-v2.0';
+const CACHE_NAME = 'ankara-kirikkale-v3.0';
 const ASSETS = [
     './',
     'index.html',
