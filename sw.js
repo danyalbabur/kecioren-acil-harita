@@ -1,7 +1,6 @@
-const CACHE_NAME = 'acil-harita-v1.1'; // Versiyonu 1.1 yaptık ki eski bozuk hafızayı silsin
+const CACHE_NAME = 'acil-harita-v1.2'; // Versiyonu artırarak temizlik yapıyoruz
 const ASSETS = [
-    './',
-    './index.html',
+    'index.html',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
