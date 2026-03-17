@@ -1,12 +1,7 @@
-const CACHE_NAME = 'ankara-kirikkale-v3.0';
+const CACHE_NAME = 'mega-ankara-v4';
 const ASSETS = [
-    './',
     'index.html',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-    'https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css',
-    'https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css',
-    'https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js'
+    'manifest.json'
 ];
 
 self.addEventListener('install', e => {
