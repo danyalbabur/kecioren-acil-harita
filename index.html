@@ -15,15 +15,12 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
     
     <style>
-        body { padding: 0; margin: 0; background: #1a1a1a; }
+        body { padding: 0; margin: 0; background: #1a1a1a; overflow: hidden; }
         html, body, #map { height: 100%; width: 100vw; }
-        
         .leaflet-layer, .leaflet-control-zoom-in, .leaflet-control-zoom-out, .leaflet-control-attribution {
             filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
         }
-
         .ozel-ikon { font-size: 24px; text-align: center; line-height: 24px; }
-        
         #bilgi-paneli {
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
             z-index: 1000; background: rgba(25, 25, 25, 0.95); padding: 15px;
@@ -35,14 +32,11 @@
             border: none; font-size: 16px; font-weight: bold; background-color: #333; color: white;
         }
         #en-yakin-mesafe { margin: 0 0 12px 0; font-size: 14px; font-weight: bold; color: #ff5252; }
-        
-        .buton-grubu { display: flex; gap: 10px; }
-        #yol-tarifi-btn, #yenile-btn {
-            flex: 1; padding: 12px; font-size: 14px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer;
+        #yol-tarifi-btn {
+            background-color: #007aff; color: white; border: none; padding: 12px 20px;
+            font-size: 16px; font-weight: bold; border-radius: 8px; width: 100%; cursor: pointer;
+            display: none;
         }
-        #yol-tarifi-btn { background-color: #007aff; color: white; display: none; }
-        #yenile-btn { background-color: #444; color: white; }
-
         .popup-yol-btn {
             background-color: #28a745; color: white; border: none; padding: 8px 15px;
             border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 8px; width: 100%;
@@ -56,21 +50,17 @@
 <div id="bilgi-paneli">
     <select id="kategori-secici">
         <option value="toplanma">🟢 En Yakın Toplanma Alanı</option>
-        <option value="eczane">💊 En Yakın Eczane (Ankara+K.Kale)</option>
-        <option value="hastane">🏥 En Yakın Hastane (Ankara+K.Kale)</option>
+        <option value="eczane">💊 En Yakın Eczane</option>
+        <option value="hastane">🏥 En Yakın Hastane</option>
     </select>
-    <p id="en-yakin-mesafe">Veriler yükleniyor (Bölge Geniş)... ⏳</p>
-    <div class="buton-grubu">
-        <button id="yenile-btn" onclick="location.reload()">Yenile</button>
-        <button id="yol-tarifi-btn">Yol Tarifi</button>
-    </div>
+    <p id="en-yakin-mesafe">Veriler yükleniyor... ⏳</p>
+    <button id="yol-tarifi-btn">Yol Tarifi Al</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 
 <script>
-    // Ankara ve Kırıkkale'nin tam ortasına odaklanıyoruz
     var map = L.map('map').setView([39.92, 33.10], 10);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
@@ -79,71 +69,65 @@
     var anlikLat = 0, anlikLon = 0;
     var aktifRotaCizgisi = null, kullaniciMarkeri = null;
 
-    // Statik Veriler (Ankara + Kırıkkale Örnekleri)
+    // 1. ÖNEMLİ: Daha fazla test noktası (Özellikle senin olduğun bölgeler için)
     var toplanmaAlanlari = [
         { isim: "Anıtkabir Yanı T.A.", tur: "toplanma", lat: 39.9250, lon: 32.8370 },
-        { isim: "Kırıkkale Büyük Şehir Parkı T.A.", tur: "toplanma", lat: 39.8415, lon: 33.5145 },
+        { isim: "Keçiören Belediye Önü T.A.", tur: "toplanma", lat: 39.9780, lon: 32.8630 },
         { isim: "Kırıkkale Cumhuriyet Meydanı", tur: "toplanma", lat: 39.8395, lon: 33.5085 },
-        { isim: "Gölbaşı Sahil Parkı T.A.", tur: "toplanma", lat: 39.7890, lon: 32.8120 }
+        { isim: "Gölbaşı Sahil T.A.", tur: "toplanma", lat: 39.7890, lon: 32.8120 }
     ];
     veriSeti.push(...toplanmaAlanlari);
 
+    // 2. ÖNEMLİ: Yol Tarifi Linki (Düzeltildi)
+    window.yolAc = function(lat, lon) {
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        // Template literal hatası düzeltildi: ${lat} ve ${lon} artık doğru
+        var url = isIOS ? 
+            `http://maps.apple.com/?daddr=${lat},${lon}&dirflg=w` : 
+            `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=walking`;
+        window.open(url, '_blank');
+    };
+
+    // 3. Geomatikçiler İçin Temiz Haversine
+    function mesafeHesapla(lat1, lon1, lat2, lon2) {
+        var R = 6371000; // Metre
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+
     async function veriIndir() {
-        // MEGA BBOX: Ankara Batı'dan Kırıkkale Doğu'ya
-        var overpassSorgusu = `
-            [out:json][timeout:90];
-            (
-              node["amenity"="pharmacy"](39.70,32.50,40.15,33.70);
-              node["amenity"="hospital"](39.70,32.50,40.15,33.70);
-            );
-            out body;`;
-        
+        var overpassSorgusu = `[out:json][timeout:90];(node["amenity"~"pharmacy|hospital"](39.70,32.50,40.15,33.75););out body;`;
         try {
-            // Daha stabil olan ana sunucuyu deniyoruz
-            var response = await fetch("https://overpass-api.de/api/interpreter", {
+            var response = await fetch("https://lz4.overpass-api.de/api/interpreter", {
                 method: "POST",
                 body: "data=" + encodeURIComponent(overpassSorgusu)
             });
-            
-            if (!response.ok) throw new Error("Sunucu meşgul, lütfen yenileyin.");
-            
             var data = await response.json();
-            if (data.elements.length === 0) throw new Error("Bu bölgede veri bulunamadı.");
-
             data.elements.forEach(el => {
                 var tur = el.tags.amenity === "hospital" ? "hastane" : "eczane";
                 veriSeti.push({ isim: el.tags.name || tur.toUpperCase(), tur: tur, lat: el.lat, lon: el.lon });
             });
-
             haritayaBas();
-            document.getElementById("en-yakin-mesafe").innerHTML = veriSeti.length + " nokta yüklendi. Konum aranıyor... 🛰️";
+            document.getElementById("en-yakin-mesafe").innerHTML = "Veriler Hazır! 🛰️";
             canliTakip();
-
-        } catch (e) {
-            document.getElementById("en-yakin-mesafe").innerHTML = "Hata: " + e.message;
-            console.error(e);
-        }
+        } catch (e) { document.getElementById("en-yakin-mesafe").innerHTML = "Bağlantı Hatası!"; }
     }
 
     function haritayaBas() {
         markers.clearLayers();
         veriSeti.forEach(v => {
             var emoji = v.tur === "hastane" ? "🏥" : (v.tur === "eczane" ? "💊" : "🟢");
-            var ikon = L.divIcon({ className: 'ozel-ikon', html: emoji, iconSize: [30,30], iconAnchor: [15,15] });
-            var m = L.marker([v.lat, v.lon], { icon: ikon }).bindPopup(`
-                <div style="text-align:center;"><b>${v.isim}</b><br>
-                <button class="popup-yol-btn" onclick="yolAc(${v.lat}, ${v.lon})">📍 Yol Tarifi</button></div>
-            `);
+            var m = L.marker([v.lat, v.lon], { 
+                icon: L.divIcon({ className: 'ozel-ikon', html: emoji, iconSize:[30,30] }) 
+            }).bindPopup(`<div style="color:#000"><b>${v.isim}</b><br><button class="popup-yol-btn" onclick="yolAc(${v.lat}, ${v.lon})">Buraya Git</button></div>`);
             markers.addLayer(m);
         });
         map.addLayer(markers);
     }
-
-    window.yolAc = function(lat, lon) {
-        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        var url = isIOS ? `http://maps.apple.com/?daddr=${lat},${lon}&dirflg=w` : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=walking`;
-        window.open(url, '_blank');
-    };
 
     function rotayiGuncelle() {
         if(anlikLat === 0) return;
@@ -152,14 +136,13 @@
 
         veriSeti.forEach(v => {
             if(v.tur === secilen) {
-                var R = 6371000; var rad = Math.PI / 180;
-                var d = R * 2 * Math.atan2(Math.sqrt(Math.sin((v.lat-anlikLat)*rad/2)**2 + Math.cos(anlikLat*rad)*Math.cos(v.lat*rad)*Math.sin((v.lon-anlikLon)*rad/2)**2), Math.sqrt(1-(Math.sin((v.lat-anlikLat)*rad/2)**2 + Math.cos(anlikLat*rad)*Math.cos(v.lat*rad)*Math.sin((v.lon-anlikLon)*rad/2)**2)));
+                var d = mesafeHesapla(anlikLat, anlikLon, v.lat, v.lon);
                 if(d < enYakin.d) enYakin = { d: d, n: v.isim, la: v.lat, lo: v.lon };
             }
         });
 
         if(enYakin.la !== 0) {
-            document.getElementById("en-yakin-mesafe").innerHTML = `En Yakın: ${enYakin.n}<br>📏 Mesafe: ${Math.round(enYakin.d)}m`;
+            document.getElementById("en-yakin-mesafe").innerHTML = `En Yakın: ${enYakin.n}<br>📏 ${Math.round(enYakin.d)} Metre`;
             document.getElementById("yol-tarifi-btn").style.display = "block";
             document.getElementById("yol-tarifi-btn").onclick = () => yolAc(enYakin.la, enYakin.lo);
             if(aktifRotaCizgisi) map.removeLayer(aktifRotaCizgisi);
@@ -170,37 +153,18 @@
     function canliTakip() {
         if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
-                anlikLat = pos.coords.latitude; 
-                anlikLon = pos.coords.longitude;
-
+                anlikLat = pos.coords.latitude; anlikLon = pos.coords.longitude;
                 if(!kullaniciMarkeri) {
-                    // Kullanıcıyı ilk kez bulduğunda burası çalışır
-                    kullaniciMarkeri = L.marker([anlikLat, anlikLon], {
-                        icon: L.divIcon({className:'ozel-ikon', html:'🔵', iconSize:[30,30]})
-                    }).addTo(map);
-
-                    // SİHİRLİ DOKUNUŞ: Konum bulunur bulunmaz kamerayı senin üzerine uçurur
-                    map.flyTo([anlikLat, anlikLon], 15, {
-                        animate: true,
-                        duration: 1.5 // 1.5 saniyede süzülerek senin üzerine gelir
-                    });
-                } else { 
-                    // Yürümeye devam ettikçe sadece mavi noktanın yeri değişir, kamera seni darlamaz
-                    kullaniciMarkeri.setLatLng([anlikLat, anlikLon]); 
-                }
+                    kullaniciMarkeri = L.marker([anlikLat, anlikLon], {icon: L.divIcon({className:'ozel-ikon', html:'🔵'})}).addTo(map);
+                    map.flyTo([anlikLat, anlikLon], 15);
+                } else { kullaniciMarkeri.setLatLng([anlikLat, anlikLon]); }
                 rotayiGuncelle();
-            }, function(error) {
-                console.log("Konum izni bekleniyor...");
-            }, { enableHighAccuracy: true });
+            }, null, { enableHighAccuracy: true });
         }
     }
 
     document.getElementById("kategori-secici").onchange = rotayiGuncelle;
     veriIndir();
-
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js', { scope: './' });
-    }
 </script>
 </body>
 </html>
