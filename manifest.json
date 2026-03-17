@@ -1,0 +1,15 @@
+{
+  "name": "Keçiören Acil",
+  "short_name": "Acil Harita",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#d32f2f",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Google_Maps_pin.svg/512px-Google_Maps_pin.svg.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

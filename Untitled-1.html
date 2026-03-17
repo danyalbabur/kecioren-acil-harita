@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Keçiören Acil Durum Haritası</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#d32f2f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Google_Maps_pin.svg/512px-Google_Maps_pin.svg.png">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { padding: 0; margin: 0; }
+        html, body, #map { height: 100%; width: 100vw; }
+        
+        /* Koyu Tema (Dark Mode) Filtresi */
+        .leaflet-layer,
+        .leaflet-control-zoom-in,
+        .leaflet-control-zoom-out,
+        .leaflet-control-attribution {
+            filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
+
+        .ozel-ikon { font-size: 24px; text-align: center; line-height: 24px; }
+        
+        #bilgi-paneli {
+            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: rgba(25, 25, 25, 0.95); padding: 15px; /* Koyu temaya uygun panel */
+            border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            font-family: sans-serif; text-align: center; width: 85%; max-width: 400px;
+        }
+        #kategori-secici {
+            width: 100%; padding: 10px; margin-bottom: 12px; border-radius: 8px;
+            border: none; font-size: 16px; font-weight: bold; background-color: #333; color: white;
+        }
+        #bilgi-paneli p { margin: 0 0 12px 0; font-size: 16px; font-weight: bold; color: #ff5252; }
+        #yol-tarifi-btn {
+            background-color: #007aff; color: white; border: none; padding: 12px 20px;
+            font-size: 16px; font-weight: bold; border-radius: 8px; width: 100%; cursor: pointer;
+            display: none; 
+        }
+
+        /* Harita İçi Popup Butonu Tasarımı */
+        .popup-yol-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 8px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="bilgi-paneli">
+    <select id="kategori-secici">
+        <option value="toplanma">🟢 En Yakın Toplanma Alanı</option>
+        <option value="eczane">💊 En Yakın Eczane</option>
+        <option value="hastane">🏥 En Yakın Hastane</option>
+    </select>
+    <p id="en-yakin-mesafe">Veriler indiriliyor... ⏳</p>
+    <button id="yol-tarifi-btn">En Yakına Yol Tarifi Al</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    var map = L.map('map').setView([39.9930, 32.8630], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+    function ikonBelirle(tur) {
+        let emoji = "📍";
+        if (tur === "hastane") emoji = "🏥";
+        if (tur === "eczane") emoji = "💊";
+        if (tur === "toplanma") emoji = "🟢";
+        return L.divIcon({ className: 'ozel-ikon', html: emoji, iconSize: [30, 30], iconAnchor: [15, 15] });
+    }
+
+    // YENİ: Haritadaki herhangi bir butona tıklandığında çalışacak global yol tarifi fonksiyonu
+    window.spesifikYolTarifiAc = function(lat, lon) {
+        var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        var link = isIOS ? "http://maps.apple.com/?daddr=" + lat + "," + lon + "&dirflg=w" 
+                         : "https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lon + "&travelmode=walking";
+        window.open(link, '_blank');
+    };
+
+    var keciorenVerileri = [
+        { isim: "Botanik Parkı Toplanma Alanı", tur: "toplanma", lat: 39.9900, lon: 32.8550 },
+        { isim: "Fatih Stadı", tur: "toplanma", lat: 39.9850, lon: 32.8750 },
+        { isim: "Kalaba Kent Meydanı", tur: "toplanma", lat: 39.9940, lon: 32.8635 },
+        { isim: "Dutluk Metro Üstü Parkı", tur: "toplanma", lat: 39.9800, lon: 32.8600 }
+    ];
+
+    async function gercekVerileriIndir() {
+        var overpassSorgusu = `
+            [out:json][timeout:25];
+            (
+              node["amenity"="pharmacy"](39.95,32.82,40.03,32.90);
+              node["amenity"="hospital"](39.95,32.82,40.03,32.90);
+            );
+            out body;
+        `;
+        var url = "https://lz4.overpass-api.de/api/interpreter";
+
+        try {
+            var response = await fetch(url, {
+                method: "POST", 
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "data=" + encodeURIComponent(overpassSorgusu)
+            });
+            
+            var data = await response.json();
+
+            data.elements.forEach(function(mekan) {
+                if(mekan.lat && mekan.lon) {
+                    var mekanTuru = mekan.tags.amenity === "hospital" ? "hastane" : "eczane";
+                    var mekanIsmi = mekan.tags.name || (mekanTuru === "hastane" ? "Bölge Hastanesi" : "Bölge Eczanesi");
+                    keciorenVerileri.push({ isim: mekanIsmi, tur: mekanTuru, lat: mekan.lat, lon: mekan.lon });
+                }
+            });
+
+            // YENİ: Pinleri eklerken içine butonlu şık bir popup tasarımı gömüyoruz
+            keciorenVerileri.forEach(function(v) {
+                var popupIcerigi = `
+                    <div style="text-align:center;">
+                        <b style="font-size:14px; color:#333;">${v.isim}</b><br>
+                        <button class="popup-yol-btn" onclick="spesifikYolTarifiAc(${v.lat}, ${v.lon})">
+                            📍 Buraya Git
+                        </button>
+                    </div>
+                `;
+                L.marker([v.lat, v.lon], { icon: ikonBelirle(v.tur) })
+                 .bindPopup(popupIcerigi).addTo(map);
+            });
+
+            document.getElementById("en-yakin-mesafe").innerHTML = "Konum aranıyor... 🛰️";
+            canliTakibiBaslat(); 
+
+        } catch (hata) {
+            document.getElementById("en-yakin-mesafe").innerHTML = "Hata: " + hata.message;
+        }
+    }
+
+    // Diğer geri kalan fonksiyonlar (Mesafe Hesaplama, Canlı Takip vs. aynı kalıyor)
+    function mesafeHesapla(lat1, lon1, lat2, lon2) {
+        var R = 6371e3; var rad = Math.PI / 180;
+        var a = Math.sin((lat2 - lat1) * rad / 2) * Math.sin((lat2 - lat1) * rad / 2) +
+                Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+                Math.sin((lon2 - lon1) * rad / 2) * Math.sin((lon2 - lon1) * rad / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    }
+
+    var anlikLat = 0, anlikLon = 0;
+    var aktifRotaCizgisi = null;
+    var kullaniciMarkeri = null;
+
+    function rotayiGuncelle() {
+        if(anlikLat === 0) return;
+        var secilenKategori = document.getElementById("kategori-secici").value;
+        var enYakinMesafe = Infinity, enYakinIsim = "", hedefLat = 0, hedefLon = 0;
+
+        keciorenVerileri.forEach(function(v) {
+            if (v.tur === secilenKategori) {
+                var mesafe = mesafeHesapla(anlikLat, anlikLon, v.lat, v.lon);
+                if (mesafe < enYakinMesafe) {
+                    enYakinMesafe = mesafe; enYakinIsim = v.isim; hedefLat = v.lat; hedefLon = v.lon;
+                }
+            }
+        });
+
+        if(enYakinIsim !== "") {
+            document.getElementById("en-yakin-mesafe").innerHTML = "Hedef: " + enYakinIsim + "<br>📍 Mesafe: " + Math.round(enYakinMesafe) + "m";
+            document.getElementById("yol-tarifi-btn").style.display = "block";
+
+            if (aktifRotaCizgisi) map.removeLayer(aktifRotaCizgisi);
+            aktifRotaCizgisi = L.polyline([[anlikLat, anlikLon], [hedefLat, hedefLon]], {color: '#ff5252', weight: 4, dashArray: '10, 10'}).addTo(map);
+
+            document.getElementById("yol-tarifi-btn").onclick = function() {
+                spesifikYolTarifiAc(hedefLat, hedefLon); // Alt paneli de yeni fonksiyona bağladık
+            };
+        }
+    }
+
+    function canliTakibiBaslat() {
+        if ('geolocation' in navigator) {
+            navigator.geolocation.watchPosition(function(position) {
+                anlikLat = position.coords.latitude;
+                anlikLon = position.coords.longitude;
+
+                if (!kullaniciMarkeri) {
+                    kullaniciMarkeri = L.marker([anlikLat, anlikLon], { icon: L.divIcon({ className: 'ozel-ikon', html: '🔵', iconSize: [30,30], iconAnchor: [15,15] }) }).addTo(map);
+                    map.setView([anlikLat, anlikLon], 15); 
+                } else {
+                    kullaniciMarkeri.setLatLng([anlikLat, anlikLon]);
+                }
+                rotayiGuncelle();
+            }, function(error) {}, { enableHighAccuracy: true, maximumAge: 0 }); 
+        }
+    }
+
+    document.getElementById("kategori-secici").addEventListener("change", rotayiGuncelle);
+    gercekVerileriIndir();
+    
+    // PWA Service Worker (Çevrimdışı desteği)
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => console.error(err));
+        });
+    }
+</script>
+</body>
+</html>
